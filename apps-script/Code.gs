@@ -12,6 +12,34 @@
 var ENTITIES = ['categories', 'lists', 'projects', 'todos'];
 var DEFAULT_CATEGORIES = ['Planning', 'Logistiek', 'Materiaal', 'Communicatie', 'Inhoud'];
 
+// ---------- one-time setup: select "setup" in the toolbar and click Run ----------
+
+function setup() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('Dit script hangt niet aan een Google Sheet. Open de Sheet en kies daar Extensies → Apps Script, en plak de code daar.');
+  }
+  var users = ss.getSheetByName('users') || ss.insertSheet('users');
+  if (users.getLastRow() === 0) {
+    users.getRange(1, 1, 1, 2).setValues([['email', 'name']]);
+    var me = Session.getActiveUser().getEmail();
+    if (me) users.getRange(2, 1, 1, 2).setValues([[me, me.split('@')[0]]]);
+  }
+  ENTITIES.forEach(function (name) { ensureSheet_(name); });
+  if (readTable_('categories').length === 0) {
+    saveMany_('categories', DEFAULT_CATEGORIES.map(function (n, i) {
+      return { id: 'c' + (i + 1), name: n, order: (i + 1) * 10 };
+    }));
+  }
+  SpreadsheetApp.flush();
+  var clientId = PropertiesService.getScriptProperties().getProperty('CLIENT_ID');
+  Logger.log('Tabbladen klaar in "' + ss.getName() + '": users, ' + ENTITIES.join(', ') + '.');
+  Logger.log(clientId
+    ? 'CLIENT_ID is ingesteld.'
+    : 'Let op: CLIENT_ID ontbreekt nog (Project Settings → Script properties).');
+  Logger.log('Voeg je collega toe op het tabblad "users" (e-mail + naam).');
+}
+
 // ---------- web app entry points ----------
 
 function doGet() {
@@ -44,29 +72,6 @@ function doPost(e) {
 
 function json_(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
-}
-
-// ---------- one-time setup (run from the editor) ----------
-
-function setup() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var users = ss.getSheetByName('users') || ss.insertSheet('users');
-  if (users.getLastRow() === 0) {
-    users.getRange(1, 1, 1, 2).setValues([['email', 'name']]);
-    var me = Session.getActiveUser().getEmail();
-    if (me) users.getRange(2, 1, 1, 2).setValues([[me, me.split('@')[0]]]);
-  }
-  ENTITIES.forEach(function (name) { ensureSheet_(name); });
-  if (readTable_('categories').length === 0) {
-    saveMany_('categories', DEFAULT_CATEGORIES.map(function (n, i) {
-      return { id: 'c' + (i + 1), name: n, order: (i + 1) * 10 };
-    }));
-  }
-  var clientId = PropertiesService.getScriptProperties().getProperty('CLIENT_ID');
-  Logger.log(clientId
-    ? 'Klaar. CLIENT_ID is ingesteld.'
-    : 'Klaar, maar CLIENT_ID ontbreekt nog: Project Settings → Script properties.');
-  Logger.log('Voeg je collega toe op het tabblad "users" (e-mail + naam).');
 }
 
 // ---------- auth ----------

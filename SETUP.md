@@ -29,8 +29,13 @@ You need: your Google account, and your colleague's Google e-mail address.
 
 1. Back in Apps Script: **Project Settings** (gear icon) → **Script properties → Add script property**:
    `CLIENT_ID` = the Client ID from step 2.
-2. In the editor, choose the function **setup** in the toolbar and click **Run**. Google asks for permission the first time; allow it.
-   This creates the tabs `users`, `categories`, `lists`, `projects` and `todos`, and puts you on the `users` tab.
+2. In the editor, check that the function dropdown in the toolbar (next to **Debug**) says **setup**, then click **Run**.
+   Google asks for permission the first time: choose your account, then **Advanced → Go to … (unsafe)** → **Allow**
+   (the warning appears because the script is your own and not verified by Google).
+   The **Execution log** at the bottom should end with "Tabbladen klaar". The Sheet now has the tabs
+   `users`, `categories`, `lists`, `projects` and `todos`, with you on the `users` tab.
+   If the log says the script is not attached to a Sheet, you created it at script.google.com: start again from
+   the Sheet via **Extensions → Apps Script**.
 3. In the Sheet, tab **users**: add a row for your colleague (e-mail in column A, name in column B). Fix your own name in column B too.
 4. In Apps Script: **Deploy → New deployment** → type **Web app**:
    - Execute as: **Me**
