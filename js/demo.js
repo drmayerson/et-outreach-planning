@@ -12,11 +12,12 @@ export function demoSeed() {
   const todo = (f) => ({
     id: `t${++n}`, title: '', description: '', projectId: '', listId: '', category: '', assignees: [],
     urgency: '', status: 'open', waitingFor: '', dueDate: '', links: [], subtasks: [], notes: '',
-    inWeek: '', snoozeUntil: '', order: n * 10, doneAt: '', doneBy: '', archived: false,
+    followUp: '', inWeek: '', snoozeUntil: '', order: n * 10, doneAt: '', doneBy: '', archived: false, history: [],
     createdAt: now, createdBy: A, updatedAt: now, ...f,
   });
   const project = (f) => ({
-    description: '', trekkers: [], dropboxUrl: '', links: [], archived: false,
+    description: '', parentId: '', trekkers: [], dropboxUrl: '', links: [], events: [], materials: [], contactIds: [],
+    archived: false,
     createdAt: now, createdBy: A, updatedAt: now, ...f,
   });
 
@@ -32,6 +33,11 @@ export function demoSeed() {
       { id: 'c4', name: 'Communicatie', order: 40 },
       { id: 'c5', name: 'Inhoud', order: 50 },
     ],
+    contacts: [
+      { id: 'k1', name: 'Sanne Voorbeeld', organisation: 'Technopolis', role: 'Educatief medewerker', email: 'sanne@voorbeeld.be', phone: '', notes: '', createdAt: now, updatedAt: now },
+      { id: 'k2', name: 'Tom Voorbeeld', organisation: 'Nerdland', role: 'Programmatie', email: 'tom@voorbeeld.be', phone: '+32 470 00 00 00', notes: 'Liefst bellen.', createdAt: now, updatedAt: now },
+      { id: 'k3', name: 'Lies Voorbeeld', organisation: 'Busbedrijf', role: 'Reservaties', email: 'lies@voorbeeld.be', phone: '', notes: '', createdAt: now, updatedAt: now },
+    ],
     lists: [
       { id: 'la1', owner: A, name: 'Algemeen', order: 10 },
       { id: 'la2', owner: A, name: 'Ideeën', order: 20 },
@@ -41,11 +47,18 @@ export function demoSeed() {
       project({
         id: 'p1', title: 'Technopolis-expo', trekkers: [A],
         description: 'Doorlopende stand in Technopolis.',
-        dropboxUrl: 'https://www.dropbox.com/home',
+        dropboxUrl: 'https://www.dropbox.com/home', contactIds: ['k1'],
+        events: [{ id: 'e1', date: d(10), endDate: '', label: 'Rondleiding met leerkrachten', location: 'Technopolis, Mechelen' }],
       }),
       project({
         id: 'p2', title: 'Nerdland Festival', trekkers: [B],
-        description: 'Stand en workshop op het festival (één evenement).',
+        description: 'Stand en workshop op het festival (één evenement).', contactIds: ['k2'],
+        events: [{ id: 'e2', date: d(2), endDate: d(3), label: 'Festival', location: 'Gent' }],
+        materials: [
+          { id: 'm1', name: 'Kartonnen spiegels', qty: '20', status: 'besteld' },
+          { id: 'm2', name: 'Roll-up banner', qty: '1', status: 'klaar' },
+          { id: 'm3', name: 'Flyers', qty: '500', status: 'nodig' },
+        ],
       }),
       project({
         id: 'p3', title: 'Lesmodules secundair onderwijs', trekkers: [A, B],
@@ -53,7 +66,19 @@ export function demoSeed() {
       }),
       project({
         id: 'p4', title: 'Schoolbezoeken', trekkers: [B],
-        description: 'Overkoepelend project voor alle schoolbezoeken dit schooljaar.',
+        description: 'Overkoepelend project voor alle schoolbezoeken dit schooljaar.', contactIds: ['k3'],
+      }),
+      project({
+        id: 'p3a', parentId: 'p3', title: 'Module zwaartekrachtgolven', trekkers: [A],
+        description: 'Lesmodule voor de derde graad.',
+      }),
+      project({
+        id: 'p3b', parentId: 'p3', title: 'Module licht en spiegels', trekkers: [B],
+        description: 'Lesmodule voor de tweede graad.',
+      }),
+      project({
+        id: 'p4a', parentId: 'p4', title: 'Bezoek Sint-Jozefscollege', trekkers: [B],
+        events: [{ id: 'e3', date: d(5), endDate: '', label: 'Bezoek 5de jaar', location: 'Aalst' }],
       }),
       project({
         id: 'p5', title: 'Artikel VVS-magazine', trekkers: [A],
@@ -67,8 +92,10 @@ export function demoSeed() {
       todo({ projectId: 'p2', category: 'c1', title: 'Standaanvraag indienen', assignees: [B], urgency: 'semi', dueDate: d(3) }),
       todo({ projectId: 'p2', category: 'c3', title: 'Workshopmateriaal bestellen', status: 'waiting', waitingFor: 'offerte leverancier' }),
       todo({ projectId: 'p2', category: 'c1', title: 'Shiften verdelen', assignees: [A, B], dueDate: d(12) }),
-      todo({ projectId: 'p3', category: 'c5', title: 'Module 1: lesfiche afwerken', assignees: [A], urgency: 'dringend' }),
-      todo({ projectId: 'p3', category: 'c5', title: 'Feedback leerkrachten verwerken', assignees: [B], urgency: 'lang' }),
+      todo({ projectId: 'p3a', category: 'c5', title: 'Lesfiche afwerken', assignees: [A], urgency: 'dringend' }),
+      todo({ projectId: 'p3a', category: 'c3', title: 'Spiegelmodel laten maken', assignees: [A], status: 'waiting', waitingFor: 'werkplaats', followUp: d(1) }),
+      todo({ projectId: 'p3b', category: 'c5', title: 'Feedback leerkrachten verwerken', assignees: [B], urgency: 'lang' }),
+      todo({ projectId: 'p4a', category: 'c2', title: 'Lokaal en projector bevestigen', assignees: [B], dueDate: d(4) }),
       todo({ projectId: 'p3', category: 'c1', title: 'Proefles inplannen', dueDate: d(30) }),
       todo({ projectId: 'p4', category: 'c4', title: 'Bevestigingsmail naar scholen sturen', assignees: [B], dueDate: d(1) }),
       todo({ projectId: 'p4', category: 'c2', title: 'Bus reserveren', assignees: [B], status: 'done', doneAt: now, doneBy: B }),

@@ -3,17 +3,26 @@ import { CONFIG } from './config.js';
 import * as S from './store.js';
 import { createAuth } from './auth.js';
 import { renderView, route, ui as viewUi } from './views.js';
-import { icon, toast, openTodoDialog, openProjectDialog, openListDialog } from './ui.js';
+import {
+  toast, openTodoDialog, openProjectDialog, openListDialog, openEventDialog, openContactDialog,
+  openLinkContactDialog, openTemplateDialog,
+} from './ui.js';
+import { exportProjects } from './export.js';
 import { uid, esc, todayISO, mondayOf, addDays } from './util.js';
 
 const app = document.getElementById('app');
 const dialog = document.getElementById('dialog');
-const demo = !(CONFIG.clientId && CONFIG.apiUrl);
+// "?demo" in the address forces demo mode (handy for trying things without touching the real data)
+const demo = new URLSearchParams(location.search).has('demo') || !(CONFIG.clientId && CONFIG.apiUrl);
 let auth = null;
 
 // ---------- rendering ----------
-const NAV = { home: 'home', project: 'home', week: 'week', lijsten: 'lijsten', archief: 'archief', instellingen: 'instellingen' };
-const TITLES = { home: 'Overzicht', week: 'Deze week', lijsten: 'Lijsten', archief: 'Archief', instellingen: 'Instellingen' };
+const NAV = {
+  home: 'home', project: 'home', week: 'week', lijsten: 'lijsten', contacten: 'contacten', archief: 'archief', instellingen: 'instellingen',
+};
+const TITLES = {
+  home: 'Overzicht', week: 'Deze week', lijsten: 'Lijsten', contacten: 'Contacten', archief: 'Archief', instellingen: 'Instellingen',
+};
 
 function render() {
   if (!S.state.ready) return;
@@ -25,7 +34,7 @@ function render() {
   const r = route();
   app.innerHTML = renderView(r);
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === NAV[r.name]));
-  const projTitle = r.name === 'project' ? S.byId('projects', r.arg)?.title : '';
+  const projTitle = r.name === 'project' ? S.projectLabel(S.byId('projects', r.arg)) : '';
   document.title = `${projTitle || TITLES[r.name] || 'Overzicht'} · Planningstool`;
   renderUserChip();
   mountSortables();
@@ -49,7 +58,8 @@ function renderUserChip() {
 function renderBanner() {
   const b = document.getElementById('banner');
   b.innerHTML = demo
-    ? '<div class="banner">Demomodus: de gegevens blijven in deze browser. Koppel de Google Sheet via SETUP.md om samen te werken.</div>'
+    ? `<div class="banner">Demomodus: de gegevens blijven in deze browser.${
+      CONFIG.apiUrl ? ' <a href="./">Naar de echte gegevens</a>' : ' Koppel de Google Sheet via SETUP.md om samen te werken.'}</div>`
     : '';
 }
 
@@ -156,7 +166,41 @@ app.addEventListener('click', (e) => {
       return toast('Aan jou toegewezen');
     case 'new-todo': return openTodoDialog(null, { projectId: el.dataset.project });
     case 'new-project': return openProjectDialog(null, goProject);
+    case 'new-subproject': return openProjectDialog(null, goProject, { parentId: id });
     case 'edit-project': return openProjectDialog(S.byId('projects', id));
+    case 'template-project': return openTemplateDialog(S.byId('projects', id), goProject);
+    case 'add-event': return openEventDialog(S.byId('projects', id));
+    case 'edit-event': {
+      const p = S.byId('projects', route().arg);
+      const ev = p?.events.find((x) => x.id === el.dataset.eid);
+      return ev && openEventDialog(p, ev);
+    }
+    case 'mat-cycle':
+    case 'mat-delete': {
+      const p = S.byId('projects', route().arg);
+      const mid = el.closest('[data-mid]')?.dataset.mid;
+      if (!p || !mid) return;
+      const order = ['nodig', 'besteld', 'klaar'];
+      const materials = el.dataset.action === 'mat-delete'
+        ? p.materials.filter((m) => m.id !== mid)
+        : p.materials.map((m) => (m.id === mid ? { ...m, status: order[(order.indexOf(m.status) + 1) % order.length] } : m));
+      return S.upsert('projects', { ...p, materials });
+    }
+    case 'link-contact': return openLinkContactDialog(S.byId('projects', id));
+    case 'unlink-contact': {
+      const p = S.byId('projects', el.dataset.project);
+      if (p) S.upsert('projects', { ...p, contactIds: p.contactIds.filter((x) => x !== id) });
+      return;
+    }
+    case 'new-contact': return openContactDialog(null);
+    case 'edit-contact': return openContactDialog(S.byId('contacts', id));
+    case 'export':
+      el.disabled = true;
+      exportProjects(viewUi.exportArchived)
+        .then((n) => toast(`Excel-bestand gemaakt met ${n} project(en)`))
+        .catch((err) => toast(err.message))
+        .finally(() => { el.disabled = false; });
+      return;
     case 'archive-project': {
       const p = S.byId('projects', id);
       if (!p) return;
@@ -213,6 +257,11 @@ app.addEventListener('keydown', (e) => {
       toast(`Toegevoegd aan je week (lijst "${l.name}")`);
       break;
     }
+    case 'material': {
+      const p = S.byId('projects', inp.dataset.project);
+      if (p) S.upsert('projects', { ...p, materials: [...p.materials, { id: uid(), name: title, qty: '', status: 'nodig' }] });
+      break;
+    }
     case 'category': {
       const max = Math.max(0, ...S.state.categories.map((c) => c.order));
       S.upsert('categories', { id: uid(), name: title, order: max + 10 });
@@ -226,11 +275,24 @@ document.addEventListener('change', (e) => {
     S.DemoBackend.setMe(e.target.value);
     location.reload();
   }
+  if (e.target.matches('[data-export-archived]')) viewUi.exportArchived = e.target.checked;
+  const matId = e.target.dataset?.matQty;
+  if (matId) {
+    const p = S.byId('projects', route().arg);
+    if (p) S.upsert('projects', { ...p, materials: p.materials.map((m) => (m.id === matId ? { ...m, qty: e.target.value.trim() } : m)) });
+  }
   const catId = e.target.dataset?.catName;
   if (catId) {
     const c = S.byId('categories', catId);
     const name = e.target.value.trim();
     if (c && name && name !== c.name) S.upsert('categories', { ...c, name });
+  }
+});
+
+app.addEventListener('input', (e) => {
+  if (e.target.matches('[data-contact-search]')) {
+    viewUi.contactQuery = e.target.value;
+    render();
   }
 });
 
@@ -257,6 +319,11 @@ async function start() {
       auth = createAuth(CONFIG.clientId);
       await auth.init();
       await S.init(new S.SheetBackend(CONFIG.apiUrl, auth), 'sheet');
+      if (!S.state.scriptVersion) {
+        document.getElementById('banner').innerHTML = '<div class="banner">Het Apps Script is verouderd: contacten kunnen nog niet bewaard worden. '
+          + 'Plak de nieuwe <a href="https://github.com/drmayerson/et-outreach-planning/blob/main/apps-script/Code.gs" target="_blank" rel="noopener">Code.gs</a> '
+          + 'en kies Implementeren → Implementaties beheren → Bewerken → Nieuwe versie.</div>';
+      }
       // pick up your colleague's changes
       const refresh = () => {
         if (document.visibilityState === 'visible' && !dialog.open) S.reload().catch(() => {});

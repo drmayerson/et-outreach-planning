@@ -9,7 +9,9 @@
  * it was issued for our CLIENT_ID and that the e-mail address is on the 'users' tab.
  */
 
-var ENTITIES = ['categories', 'lists', 'projects', 'todos'];
+// Tabs created by setup(). Other tabs are created automatically when the app first saves to them.
+var ENTITIES = ['categories', 'lists', 'contacts', 'projects', 'todos'];
+var SCRIPT_VERSION = '1.1';
 var DEFAULT_CATEGORIES = ['Planning', 'Logistiek', 'Materiaal', 'Communicatie', 'Inhoud'];
 
 // ---------- one-time setup: select "setup" in the toolbar and click Run ----------
@@ -43,7 +45,7 @@ function setup() {
 // ---------- web app entry points ----------
 
 function doGet() {
-  return json_({ ok: true, data: 'Planningstool API werkt.' });
+  return json_({ ok: true, data: 'Planningstool API werkt (versie ' + SCRIPT_VERSION + ').' });
 }
 
 function doPost(e) {
@@ -106,9 +108,17 @@ function verify_(token) {
 // ---------- data ----------
 
 function loadAll_(email) {
-  var out = { me: email, users: readTable_('users') };
-  ENTITIES.forEach(function (name) { out[name] = readTable_(name); });
+  var out = { me: email, users: readTable_('users'), scriptVersion: SCRIPT_VERSION };
+  SpreadsheetApp.getActiveSpreadsheet().getSheets().forEach(function (sh) {
+    var name = sh.getName();
+    if (name !== 'users' && isDataTab_(name)) out[name] = readTable_(name);
+  });
   return out;
+}
+
+/** Data tabs have short lower-case names (projects, todos, …); anything else in the Sheet is left alone. */
+function isDataTab_(name) {
+  return /^[a-z][a-z0-9_]{1,30}$/.test(name);
 }
 
 function ensureSheet_(name) {
@@ -144,7 +154,7 @@ function ser_(v) {
 }
 
 function checkEntity_(entity) {
-  if (ENTITIES.indexOf(entity) < 0) throw new Error('Onbekende tabel: ' + entity);
+  if (entity === 'users' || !isDataTab_(String(entity))) throw new Error('Onbekende tabel: ' + entity);
 }
 
 function saveMany_(entity, objs) {

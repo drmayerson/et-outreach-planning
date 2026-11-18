@@ -62,8 +62,17 @@ Open the app, sign in with Google, done.
 After changing `Code.gs`: **Deploy → Manage deployments → Edit (pencil) → Version: New version → Deploy**.
 The URL stays the same.
 
+### Updating to version 1.1 (once)
+
+1. In Apps Script, select all code, paste the new [`apps-script/Code.gs`](apps-script/Code.gs) over it, save.
+2. **Deploy → Manage deployments → Edit (pencil) → Version: New version → Deploy.**
+
+From this version on, the script creates new tabs (such as `contacts`) by itself, so future app versions
+should not need another script update. Opening the web app URL in a browser shows "versie 1.1" when it worked.
+
 ## Good to know
 
 - The Sheet is the database. You can read it, but avoid editing the tabs by hand while the app is open; edit names in the `users` tab freely.
 - Removing someone's access: delete their row on the `users` tab.
-- The data is in your Google account. Check KU Leuven's rules before storing contact details of external people (question 58).
+- The data is in your Google account.
+- Add `?demo` to the app address (`…/et-outreach-planning/?demo`) to try things with sample data in your own browser, without touching the real data.

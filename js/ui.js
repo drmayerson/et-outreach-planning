@@ -1,4 +1,4 @@
-// Shared UI pieces: icons, to-do cards, toast and the edit dialogs.
+// Shared UI pieces: icons, to-do cards, toast and the dialogs.
 import * as S from './store.js';
 import {
   esc, fmtDate, fmtDateTime, todayISO, mondayOf, uid, safeUrl, parseLinks, linksToText, linkLabel,
@@ -20,12 +20,20 @@ const ICONS = {
   clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',
   subtasks: '<path d="M4 6h4M4 12h4M4 18h4M12 6h8M12 12h8M12 18h8"/>',
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.5a3.5 3.5 0 0 1 0 7M18 14.5a6.5 6.5 0 0 1 3.5 5.5"/>',
+  mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+  phone: '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2"/>',
+  pin: '<path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h3"/>',
+  download: '<path d="M12 3v12M7 10l5 5 5-5M4 21h16"/>',
+  box: '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
 };
 export const icon = (name, cls = '') =>
   `<svg class="ic ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`;
 
 export const URGENCY = { dringend: 'Dringend', semi: 'Semi-dringend', lang: 'Lange termijn' };
 const STATUS = { open: 'Open', waiting: 'Wachten op …', done: 'Klaar' };
+export const MATERIAL_STATUS = { nodig: 'Nodig', besteld: 'Besteld', klaar: 'Klaar' };
 
 export const empty = (text) => `<p class="empty">${esc(text)}</p>`;
 
@@ -45,6 +53,12 @@ export function linkChips(links) {
         : '';
     })
     .join('');
+}
+
+export function eventDateText(ev) {
+  return ev.endDate && ev.endDate !== ev.date
+    ? `${fmtDate(ev.date, true)} – ${fmtDate(ev.endDate, true)}`
+    : fmtDate(ev.date, true);
 }
 
 /**
@@ -67,7 +81,8 @@ export function todoCard(t, o = {}) {
     meta.push(`<span class="badge due ${overdue ? 'late' : ''}">${icon('calendar')}${overdue ? 'Te laat · ' : ''}${fmtDate(t.dueDate)}</span>`);
   }
   if (t.status === 'waiting') {
-    meta.push(`<span class="badge wait">${icon('clock')}Wachten op${t.waitingFor ? ': ' + esc(t.waitingFor) : ''}</span>`);
+    const follow = t.followUp ? ` · opvolgen ${fmtDate(t.followUp)}` : '';
+    meta.push(`<span class="badge wait">${icon('clock')}Wachten op${t.waitingFor ? ': ' + esc(t.waitingFor) : ''}${follow}</span>`);
   }
   if (t.subtasks.length) {
     const n = t.subtasks.filter((s) => s.done).length;
@@ -121,23 +136,31 @@ export function toast(msg, actionLabel, onAction) {
     };
   }
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), actionLabel ? 6000 : 3000);
+  toastTimer = setTimeout(() => el.classList.remove('show'), actionLabel ? 6000 : 3500);
 }
 
 // ---------- dialogs ----------
 const dlg = () => document.getElementById('dialog');
 const opt = (value, label, current) =>
   `<option value="${esc(value)}"${value === current ? ' selected' : ''}>${esc(label)}</option>`;
+const closeBtn = `<button type="button" class="iconbtn" data-close aria-label="Sluiten">${icon('x')}</button>`;
 
 function showDialog(html, setup) {
   const d = dlg();
   d.innerHTML = html;
   d.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => d.close()));
-  setup(d.querySelector('form'), d);
+  const form = d.querySelector('form');
+  setup(form, d);
   d.showModal();
   d.querySelector('[autofocus]')?.focus();
 }
 
+const userChecks = (name, selected) =>
+  S.state.users
+    .map((u) => `<label class="chk"><input type="checkbox" name="${name}" value="${esc(u.email)}"${selected.includes(u.email) ? ' checked' : ''}>${esc(u.name || u.email)}</label>`)
+    .join('');
+
+// ----- to-do -----
 export function openTodoDialog(t, defaults = {}) {
   const isNew = !t;
   const todo = structuredClone(t || S.newTodo(defaults));
@@ -146,19 +169,18 @@ export function openTodoDialog(t, defaults = {}) {
   const subtasks = todo.subtasks.map((s) => ({ ...s }));
 
   const place = todo.listId ? `l:${todo.listId}` : `p:${todo.projectId}`;
-  const projects = S.activeProjects();
+  const projects = S.activeProjectTree();
   if (todo.projectId && !projects.some((p) => p.id === todo.projectId)) {
     const p = S.byId('projects', todo.projectId);
     if (p) projects.push(p);
   }
-  let placeOpts = `<optgroup label="Projecten">${projects.map((p) => opt(`p:${p.id}`, p.title, place)).join('')}</optgroup>`
+  let placeOpts = `<optgroup label="Projecten">${projects.map((p) => opt(`p:${p.id}`, S.projectLabel(p), place)).join('')}</optgroup>`
     + `<optgroup label="Mijn lijsten">${S.myLists().map((l) => opt(`l:${l.id}`, l.name, place)).join('')}</optgroup>`;
   if (ro) {
     const l = S.byId('lists', todo.listId);
     placeOpts = opt(place, `Lijst van ${S.userName(l?.owner)}: ${l?.name || ''}`, place);
   }
   const cats = S.sortByOrder(S.state.categories).map((c) => opt(c.id, c.name, todo.category)).join('');
-  const users = S.state.users;
   const st = S.weekStatus(todo);
   const created = todo.createdBy
     ? `Aangemaakt door ${esc(S.userName(todo.createdBy))}${todo.createdAt ? ' op ' + fmtDateTime(todo.createdAt) : ''}.`
@@ -166,11 +188,11 @@ export function openTodoDialog(t, defaults = {}) {
   const finished = todo.status === 'done' && todo.doneBy
     ? ` Afgewerkt door ${esc(S.userName(todo.doneBy))} op ${fmtDateTime(todo.doneAt)}.`
     : '';
+  const history = [...(todo.history || [])].reverse();
 
   showDialog(
     `<form class="dlg" method="dialog" novalidate>
-      <header class="dlg-head"><h2>${isNew ? 'Nieuwe to-do' : ro ? 'To-do bekijken' : 'To-do bewerken'}</h2>
-        <button type="button" class="iconbtn" data-close aria-label="Sluiten">${icon('x')}</button></header>
+      <header class="dlg-head"><h2>${isNew ? 'Nieuwe to-do' : ro ? 'To-do bekijken' : 'To-do bewerken'}</h2>${closeBtn}</header>
       <div class="dlg-body">
         ${ro ? `<p class="note">Dit staat op een persoonlijke lijst van ${esc(S.userName(S.byId('lists', todo.listId)?.owner))}. Je kan het bekijken, niet aanpassen.</p>` : ''}
         <fieldset ${ro ? 'disabled' : ''}>
@@ -179,16 +201,17 @@ export function openTodoDialog(t, defaults = {}) {
             <label class="field"><span>Plaats</span><select name="place">${placeOpts}</select></label>
             <label class="field" data-show="project"><span>Categorie</span><select name="category"><option value="">Zonder categorie</option>${cats}</select></label>
           </div>
-          <div class="field" data-show="project"><span>Toegewezen aan</span><div class="checks">${
-            users.map((u) => `<label class="chk"><input type="checkbox" name="assignees" value="${esc(u.email)}"${todo.assignees.includes(u.email) ? ' checked' : ''}>${esc(u.name || u.email)}</label>`).join('')
-          }</div></div>
+          <div class="field" data-show="project"><span>Toegewezen aan</span><div class="checks">${userChecks('assignees', todo.assignees)}</div></div>
           <div class="row">
             <label class="field"><span>Urgentie</span><select name="urgency">${opt('', 'Geen', todo.urgency)}${Object.entries(URGENCY).map(([k, v]) => opt(k, v, todo.urgency)).join('')}</select></label>
             <label class="field"><span>Deadline</span><input type="date" name="dueDate" value="${esc(todo.dueDate)}"></label>
             <label class="field"><span>Status</span><select name="status">${Object.entries(STATUS).map(([k, v]) => opt(k, v, todo.status)).join('')}</select></label>
           </div>
-          <label class="field" data-show="waiting"><span>Wachten op</span><input name="waitingFor" autocomplete="off" placeholder="Wie of wat?" value="${esc(todo.waitingFor)}"></label>
-          <label class="chk"><input type="checkbox" name="inWeek"${todo.inWeek ? ' checked' : ''}> In mijn week zetten${st.auto ? ' <span class="hint">(staat er al automatisch in: dringend of deadline deze week)</span>' : ''}</label>
+          <div class="row" data-show="waiting">
+            <label class="field"><span>Wachten op</span><input name="waitingFor" autocomplete="off" placeholder="Wie of wat?" value="${esc(todo.waitingFor)}"></label>
+            <label class="field"><span>Opvolgen op</span><input type="date" name="followUp" value="${esc(todo.followUp)}"></label>
+          </div>
+          <label class="chk"><input type="checkbox" name="inWeek"${todo.inWeek ? ' checked' : ''}> In mijn week zetten${st.auto ? ' <span class="hint">(staat er al automatisch in)</span>' : ''}</label>
           <label class="field"><span>Beschrijving</span><textarea name="description" rows="3">${esc(todo.description)}</textarea></label>
           <div class="field"><span>Subtaken</span><div class="subtasks"></div>
             <input class="add" data-subtask-add placeholder="+ Subtaak toevoegen (Enter)" autocomplete="off"></div>
@@ -196,6 +219,9 @@ export function openTodoDialog(t, defaults = {}) {
           <label class="field"><span>Notities</span><textarea name="notes" rows="3">${esc(todo.notes)}</textarea></label>
         </fieldset>
         ${created || finished ? `<p class="hint">${created}${finished}</p>` : ''}
+        ${history.length ? `<details class="history"><summary>Geschiedenis (${history.length})</summary><ul>${history
+          .map((h) => `<li><span class="muted">${fmtDateTime(h.at)} · ${esc(S.userName(h.by))}</span> ${esc(h.text)}</li>`)
+          .join('')}</ul></details>` : ''}
       </div>
       <footer class="dlg-foot">
         ${!isNew && !ro ? '<button type="button" class="btn ghost danger" data-delete>Verwijderen</button>' : ''}
@@ -205,10 +231,11 @@ export function openTodoDialog(t, defaults = {}) {
       </footer>
     </form>`,
     (form, d) => {
+      const f$ = form.elements;
       const sync = () => {
-        const isProject = form.elements.place.value.startsWith('p:');
+        const isProject = f$.place.value.startsWith('p:');
         form.querySelectorAll('[data-show="project"]').forEach((el) => { el.hidden = !isProject; });
-        form.querySelector('[data-show="waiting"]').hidden = form.elements.status.value !== 'waiting';
+        form.querySelector('[data-show="waiting"]').hidden = f$.status.value !== 'waiting';
       };
       const box = form.querySelector('.subtasks');
       const drawSubtasks = () => {
@@ -239,8 +266,8 @@ export function openTodoDialog(t, defaults = {}) {
         e.target.value = '';
         drawSubtasks();
       });
-      form.elements.place.addEventListener('change', sync);
-      form.elements.status.addEventListener('change', sync);
+      f$.place.addEventListener('change', sync);
+      f$.status.addEventListener('change', sync);
       sync();
       drawSubtasks();
 
@@ -256,7 +283,7 @@ export function openTodoDialog(t, defaults = {}) {
         if (ro) return d.close();
         const f = new FormData(form);
         const title = String(f.get('title')).trim();
-        if (!title) { form.elements.title.focus(); return; }
+        if (!title) { f$.title.focus(); return; }
         const [kind, ref] = String(f.get('place')).split(':');
         const status = String(f.get('status'));
         const next = {
@@ -267,6 +294,7 @@ export function openTodoDialog(t, defaults = {}) {
           dueDate: String(f.get('dueDate')),
           status,
           waitingFor: status === 'waiting' ? String(f.get('waitingFor')).trim() : '',
+          followUp: status === 'waiting' ? String(f.get('followUp')) : '',
           notes: String(f.get('notes')),
           links: parseLinks(f.get('links')),
           subtasks: subtasks.filter((s) => s.title.trim()),
@@ -302,30 +330,51 @@ export function openTodoDialog(t, defaults = {}) {
   );
 }
 
-export function openProjectDialog(p, onCreated) {
+// ----- project -----
+export function openProjectDialog(p, onCreated, defaults = {}) {
   const isNew = !p;
+  const parentDefault = S.byId('projects', defaults.parentId);
   const proj = structuredClone(p || {
-    id: uid(), title: '', description: '', trekkers: [S.state.me], dropboxUrl: '', links: [],
+    id: uid(), title: '', description: '', parentId: defaults.parentId || '',
+    trekkers: parentDefault ? [...parentDefault.trekkers] : [S.state.me],
+    dropboxUrl: '', links: [], events: [], materials: [], contactIds: [],
     archived: false, createdAt: new Date().toISOString(), createdBy: S.state.me,
   });
+  const canHaveParent = isNew || !S.hasSubProjects(proj.id);
+  const parentOpts = S.activeProjects()
+    .filter((x) => x.id !== proj.id)
+    .map((x) => opt(x.id, x.title, proj.parentId))
+    .join('');
   showDialog(
     `<form class="dlg" method="dialog" novalidate>
-      <header class="dlg-head"><h2>${isNew ? 'Nieuw project' : 'Project bewerken'}</h2>
-        <button type="button" class="iconbtn" data-close aria-label="Sluiten">${icon('x')}</button></header>
+      <header class="dlg-head"><h2>${isNew ? (proj.parentId ? 'Nieuw subproject' : 'Nieuw project') : 'Project bewerken'}</h2>${closeBtn}</header>
       <div class="dlg-body">
         <label class="field"><span>Titel</span><input name="title" required autocomplete="off" value="${esc(proj.title)}" autofocus></label>
         <label class="field"><span>Korte beschrijving</span><textarea name="description" rows="3" placeholder="Waar gaat dit project over? Handig voor wie het project niet kent.">${esc(proj.description)}</textarea></label>
-        <div class="field"><span>Trekker(s)</span><div class="checks">${
-          S.state.users.map((u) => `<label class="chk"><input type="checkbox" name="trekkers" value="${esc(u.email)}"${proj.trekkers.includes(u.email) ? ' checked' : ''}>${esc(u.name || u.email)}</label>`).join('')
-        }</div></div>
+        <label class="field"><span>Hoort bij</span><select name="parentId" ${canHaveParent ? '' : 'disabled'}>${opt('', '— (hoofdproject)', proj.parentId)}${parentOpts}</select>
+          ${canHaveParent ? '' : '<span class="hint">Dit project heeft zelf subprojecten, dus het blijft een hoofdproject.</span>'}</label>
+        <div class="field"><span>Trekker(s)</span><div class="checks">${userChecks('trekkers', proj.trekkers)}</div></div>
         <label class="field"><span>Dropbox-map</span><input name="dropboxUrl" autocomplete="off" placeholder="Plak de link naar de map (Dropbox → Delen → Link kopiëren)" value="${esc(proj.dropboxUrl)}"></label>
         <label class="field"><span>Andere links</span><textarea name="links" rows="2" placeholder="Eén per regel, bv. Draaiboek | https://…">${esc(linksToText(proj.links))}</textarea></label>
       </div>
-      <footer class="dlg-foot"><span class="spacer"></span>
+      <footer class="dlg-foot">${isNew ? '' : '<button type="button" class="btn ghost danger" data-delete>Verwijderen</button>'}<span class="spacer"></span>
         <button type="button" class="btn ghost" data-close>Annuleren</button>
-        <button type="submit" class="btn primary">${isNew ? 'Project maken' : 'Opslaan'}</button></footer>
+        <button type="submit" class="btn primary">${isNew ? 'Maken' : 'Opslaan'}</button></footer>
     </form>`,
     (form, d) => {
+      form.querySelector('[data-delete]')?.addEventListener('click', () => {
+        const family = S.projectFamilyIds(proj.id);
+        const todoIds = S.state.todos.filter((t) => family.includes(t.projectId)).map((t) => t.id);
+        const subs = family.length - 1;
+        const msg = `Project "${proj.title}"${subs ? ` met ${subs} subproject(en)` : ''} en ${todoIds.length} to-do('s) definitief verwijderen? `
+          + 'Archiveren kan ook: dan blijft alles bewaard.';
+        if (!confirm(msg)) return;
+        if (todoIds.length) S.remove('todos', todoIds);
+        S.remove('projects', family);
+        d.close();
+        location.hash = proj.parentId ? `#/project/${encodeURIComponent(proj.parentId)}` : '#/';
+        toast('Project verwijderd');
+      });
       form.addEventListener('submit', (e) => {
         e.preventDefault();
         const f = new FormData(form);
@@ -336,6 +385,7 @@ export function openProjectDialog(p, onCreated) {
           ...proj,
           title,
           description: String(f.get('description')).trim(),
+          parentId: canHaveParent ? String(f.get('parentId') || '') : '',
           trekkers: f.getAll('trekkers').map(String),
           dropboxUrl: url ? safeUrl(url) || url : '',
           links: parseLinks(f.get('links')),
@@ -348,14 +398,200 @@ export function openProjectDialog(p, onCreated) {
   );
 }
 
+// ----- dates & locations -----
+export function openEventDialog(project, ev) {
+  const isNew = !ev;
+  const item = ev ? { ...ev } : { id: uid(), date: todayISO(), endDate: '', label: '', location: '' };
+  showDialog(
+    `<form class="dlg small" method="dialog" novalidate>
+      <header class="dlg-head"><h2>${isNew ? 'Datum toevoegen' : 'Datum bewerken'}</h2>${closeBtn}</header>
+      <div class="dlg-body">
+        <label class="field"><span>Wat</span><input name="label" autocomplete="off" placeholder="bv. Festival, schoolbezoek, opbouw" value="${esc(item.label)}" autofocus></label>
+        <div class="row">
+          <label class="field"><span>Datum</span><input type="date" name="date" required value="${esc(item.date)}"></label>
+          <label class="field"><span>Tot (optioneel)</span><input type="date" name="endDate" value="${esc(item.endDate)}"></label>
+        </div>
+        <label class="field"><span>Locatie</span><input name="location" autocomplete="off" placeholder="bv. Technopolis, Mechelen" value="${esc(item.location)}"></label>
+        <p class="hint">Deze datum verschijnt in de week van de trekker(s) van het project.</p>
+      </div>
+      <footer class="dlg-foot">${isNew ? '' : '<button type="button" class="btn ghost danger" data-delete>Verwijderen</button>'}<span class="spacer"></span>
+        <button type="button" class="btn ghost" data-close>Annuleren</button>
+        <button type="submit" class="btn primary">Opslaan</button></footer>
+    </form>`,
+    (form, d) => {
+      const fresh = () => S.byId('projects', project.id) || project;
+      form.querySelector('[data-delete]')?.addEventListener('click', () => {
+        const p = fresh();
+        S.upsert('projects', { ...p, events: p.events.filter((x) => x.id !== item.id) });
+        d.close();
+      });
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = new FormData(form);
+        const date = String(f.get('date'));
+        if (!date) { form.elements.date.focus(); return; }
+        let endDate = String(f.get('endDate'));
+        if (endDate && endDate <= date) endDate = '';
+        const next = { ...item, date, endDate, label: String(f.get('label')).trim(), location: String(f.get('location')).trim() };
+        const p = fresh();
+        const events = p.events.some((x) => x.id === item.id)
+          ? p.events.map((x) => (x.id === item.id ? next : x))
+          : [...p.events, next];
+        S.upsert('projects', { ...p, events: events.sort((a, b) => a.date.localeCompare(b.date)) });
+        d.close();
+      });
+    },
+  );
+}
+
+// ----- contacts -----
+export function openContactDialog(c, onSaved) {
+  const isNew = !c;
+  const contact = c ? { ...c } : {
+    id: uid(), name: '', organisation: '', role: '', email: '', phone: '', notes: '', createdAt: new Date().toISOString(),
+  };
+  const used = isNew ? [] : S.projectsOfContact(contact.id);
+  showDialog(
+    `<form class="dlg" method="dialog" novalidate>
+      <header class="dlg-head"><h2>${isNew ? 'Nieuw contact' : 'Contact bewerken'}</h2>${closeBtn}</header>
+      <div class="dlg-body">
+        <label class="field"><span>Naam</span><input name="name" required autocomplete="off" value="${esc(contact.name)}" autofocus></label>
+        <div class="row">
+          <label class="field"><span>Organisatie</span><input name="organisation" autocomplete="off" value="${esc(contact.organisation)}"></label>
+          <label class="field"><span>Functie</span><input name="role" autocomplete="off" value="${esc(contact.role)}"></label>
+        </div>
+        <div class="row">
+          <label class="field"><span>E-mail</span><input type="email" name="email" autocomplete="off" value="${esc(contact.email)}"></label>
+          <label class="field"><span>Telefoon</span><input type="tel" name="phone" autocomplete="off" value="${esc(contact.phone)}"></label>
+        </div>
+        <label class="field"><span>Notities</span><textarea name="notes" rows="2">${esc(contact.notes)}</textarea></label>
+        ${used.length ? `<p class="hint">Gekoppeld aan: ${used.map((p) => esc(S.projectLabel(p))).join(', ')}.</p>` : ''}
+      </div>
+      <footer class="dlg-foot">${isNew ? '' : '<button type="button" class="btn ghost danger" data-delete>Verwijderen</button>'}<span class="spacer"></span>
+        <button type="button" class="btn ghost" data-close>Annuleren</button>
+        <button type="submit" class="btn primary">Opslaan</button></footer>
+    </form>`,
+    (form, d) => {
+      form.querySelector('[data-delete]')?.addEventListener('click', () => {
+        if (!confirm(`Contact "${contact.name}" verwijderen?${used.length ? ` Het wordt ook losgekoppeld van ${used.length} project(en).` : ''}`)) return;
+        if (used.length) {
+          S.upsertMany('projects', used.map((p) => ({ ...p, contactIds: p.contactIds.filter((id) => id !== contact.id) })));
+        }
+        S.remove('contacts', contact.id);
+        d.close();
+      });
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = new FormData(form);
+        const name = String(f.get('name')).trim();
+        if (!name) { form.elements.name.focus(); return; }
+        const next = { ...contact, name };
+        for (const k of ['organisation', 'role', 'email', 'phone', 'notes']) next[k] = String(f.get(k)).trim();
+        S.upsert('contacts', next);
+        d.close();
+        onSaved?.(next);
+      });
+    },
+  );
+}
+
+export function openLinkContactDialog(project) {
+  const linked = new Set(project.contactIds);
+  const options = S.state.contacts
+    .filter((c) => !linked.has(c.id))
+    .sort((a, b) => a.name.localeCompare(b.name, 'nl'));
+  const label = (c) => [c.name, c.organisation].filter(Boolean).join(' – ');
+  const link = (id) => {
+    const p = S.byId('projects', project.id);
+    if (p && !p.contactIds.includes(id)) S.upsert('projects', { ...p, contactIds: [...p.contactIds, id] });
+  };
+  showDialog(
+    `<form class="dlg small" method="dialog" novalidate>
+      <header class="dlg-head"><h2>Contact koppelen</h2>${closeBtn}</header>
+      <div class="dlg-body">
+        ${options.length ? `<label class="field"><span>Bestaand contact</span><select name="contact" autofocus>${options.map((c) => opt(c.id, label(c), '')).join('')}</select></label>`
+          : '<p class="hint">Er zijn nog geen andere contacten. Maak een nieuw contact aan.</p>'}
+      </div>
+      <footer class="dlg-foot"><button type="button" class="btn ghost" data-new>${icon('plus')}Nieuw contact</button><span class="spacer"></span>
+        <button type="button" class="btn ghost" data-close>Annuleren</button>
+        ${options.length ? '<button type="submit" class="btn primary">Koppelen</button>' : ''}</footer>
+    </form>`,
+    (form, d) => {
+      form.querySelector('[data-new]').addEventListener('click', () => {
+        d.close();
+        openContactDialog(null, (c) => link(c.id));
+      });
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const id = String(new FormData(form).get('contact') || '');
+        if (id) link(id);
+        d.close();
+      });
+    },
+  );
+}
+
+// ----- copy as template -----
+export function openTemplateDialog(project, onCreated) {
+  const subs = S.subProjects(project.id);
+  showDialog(
+    `<form class="dlg small" method="dialog" novalidate>
+      <header class="dlg-head"><h2>Kopie als sjabloon</h2>${closeBtn}</header>
+      <div class="dlg-body">
+        <p>Maakt een nieuw project met dezelfde to-dos, categorieën, trekkers, contacten, links en materiaallijst. Alle to-dos staan weer open; deadlines, urgentie en data worden leeggemaakt.</p>
+        <label class="field"><span>Titel van het nieuwe project</span><input name="title" required autocomplete="off" value="${esc(project.title)} (kopie)" autofocus></label>
+        ${subs.length ? `<label class="chk"><input type="checkbox" name="withSubs" checked> Ook de ${subs.length} subproject(en) kopiëren</label>` : ''}
+      </div>
+      <footer class="dlg-foot"><span class="spacer"></span>
+        <button type="button" class="btn ghost" data-close>Annuleren</button>
+        <button type="submit" class="btn primary">Kopie maken</button></footer>
+    </form>`,
+    (form, d) => {
+      form.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const f = new FormData(form);
+        const title = String(f.get('title')).trim();
+        if (!title) return;
+        const now = new Date().toISOString();
+        const newProjects = [];
+        const newTodos = [];
+        const copy = (src, parentId, newTitle) => {
+          const id = uid();
+          newProjects.push({
+            ...src, id, parentId, title: newTitle, archived: false, createdAt: now, createdBy: S.state.me,
+            events: [],
+            materials: src.materials.map((m) => ({ ...m, id: uid(), status: 'nodig' })),
+          });
+          for (const t of S.state.todos.filter((x) => x.projectId === src.id && !x.archived)) {
+            newTodos.push(S.newTodo({
+              ...t, id: uid(), projectId: id, status: 'open', urgency: '', dueDate: '', followUp: '', waitingFor: '',
+              inWeek: '', snoozeUntil: '', doneAt: '', doneBy: '', history: [],
+              subtasks: t.subtasks.map((s) => ({ ...s, done: false })),
+              createdAt: now, createdBy: S.state.me,
+            }));
+          }
+          return id;
+        };
+        const newId = copy(project, project.parentId, title);
+        if (f.get('withSubs')) for (const s of subs) copy(s, newId, s.title);
+        S.upsertMany('projects', newProjects);
+        if (newTodos.length) S.upsertMany('todos', newTodos);
+        d.close();
+        toast(`Kopie gemaakt: ${newTodos.length} to-do('s)`);
+        onCreated?.(newId);
+      });
+    },
+  );
+}
+
+// ----- personal list -----
 export function openListDialog(l) {
   const isNew = !l;
   const list = l ? { ...l } : { id: uid(), owner: S.state.me, name: '', order: (S.myLists().length + 1) * 10 };
   const count = S.state.todos.filter((t) => t.listId === list.id).length;
   showDialog(
     `<form class="dlg small" method="dialog" novalidate>
-      <header class="dlg-head"><h2>${isNew ? 'Nieuwe lijst' : 'Lijst bewerken'}</h2>
-        <button type="button" class="iconbtn" data-close aria-label="Sluiten">${icon('x')}</button></header>
+      <header class="dlg-head"><h2>${isNew ? 'Nieuwe lijst' : 'Lijst bewerken'}</h2>${closeBtn}</header>
       <div class="dlg-body"><label class="field"><span>Naam</span><input name="name" required autocomplete="off" value="${esc(list.name)}" autofocus></label></div>
       <footer class="dlg-foot">${isNew ? '' : '<button type="button" class="btn ghost danger" data-delete>Lijst verwijderen</button>'}
         <span class="spacer"></span><button type="button" class="btn ghost" data-close>Annuleren</button>

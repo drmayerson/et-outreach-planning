@@ -38,5 +38,13 @@ Then open <http://localhost:8080>.
 Projects, to-dos with categories, urgency, status ("wachten op"), deadlines, subtasks, links and notes;
 personal lists with drag and drop; moving to-dos between lists and projects; "this week" (urgent items and
 items due this week land there automatically, unfinished ones roll over); home page with overdue and
-14-day warnings and unassigned to-dos; archive. Sub-projects, contacts, material lists, event dates,
-templates and Excel export are planned for version 1.1.
+14-day warnings and unassigned to-dos; archive.
+
+## Version 1.1
+
+Sub-projects (one level; the parent shows its general to-dos and a count per sub-project); dates and locations
+per project, shown in the trekker's week and on the home page; a material list per project
+(nodig / besteld / klaar); a shared contact list linked to projects; a follow-up date for "wachten op";
+a change history per to-do; copying a project as a template (dates, urgency and statuses cleared);
+Excel export of projects, sub-projects, descriptions and dates. `?demo` forces demo mode.
+The Apps Script now creates new data tabs by itself.
