@@ -16,7 +16,7 @@ export function demoSeed() {
     createdAt: now, createdBy: A, updatedAt: now, ...f,
   });
   const project = (f) => ({
-    description: '', parentId: '', trekkers: [], dropboxUrl: '', links: [], events: [], materials: [], contactIds: [],
+    description: '', parentId: '', color: '', order: 0, trekkers: [], dropboxUrl: '', links: [], events: [], materials: [], contactIds: [],
     archived: false,
     createdAt: now, createdBy: A, updatedAt: now, ...f,
   });
@@ -45,13 +45,14 @@ export function demoSeed() {
     ],
     projects: [
       project({
-        id: 'p1', title: 'Technopolis-expo', trekkers: [A],
+        id: 'p1', title: 'Technopolis-expo', trekkers: [A], color: 'teal',
         description: 'Doorlopende stand in Technopolis.',
         dropboxUrl: 'https://www.dropbox.com/home', contactIds: ['k1'],
         events: [{ id: 'e1', date: d(10), endDate: '', label: 'Rondleiding met leerkrachten', location: 'Technopolis, Mechelen' }],
       }),
       project({
-        id: 'p2', title: 'Nerdland Festival', trekkers: [B],
+        id: 'p2', title: 'Nerdland Festival', trekkers: [B], color: 'oranje',
+        links: [{ label: 'Website festival', url: 'https://example.com' }],
         description: 'Stand en workshop op het festival (één evenement).', contactIds: ['k2'],
         events: [{ id: 'e2', date: d(2), endDate: d(3), label: 'Festival', location: 'Gent' }],
         materials: [
@@ -61,7 +62,7 @@ export function demoSeed() {
         ],
       }),
       project({
-        id: 'p3', title: 'Lesmodules secundair onderwijs', trekkers: [A, B],
+        id: 'p3', title: 'Lesmodules secundair onderwijs', trekkers: [A, B], color: 'paars',
         description: 'Ontwikkeling van lesmodules voor het secundair onderwijs.',
       }),
       project({

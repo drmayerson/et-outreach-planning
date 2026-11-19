@@ -48,3 +48,12 @@ per project, shown in the trekker's week and on the home page; a material list p
 a change history per to-do; copying a project as a template (dates, urgency and statuses cleared);
 Excel export of projects, sub-projects, descriptions and dates. `?demo` forces demo mode.
 The Apps Script now creates new data tabs by itself.
+
+## Version 1.2
+
+Feedback round: drag project tiles to reorder them, your own projects first; a colour per project;
+a "Links" block on the project page (Dropbox folder, event website, …) replaces the material list;
+new project to-dos go to the project's trekker(s), general to-dos of a project with sub-projects to yourself;
+quick-add with small buttons for urgency, deadline and "wachten op"; one "Notities" field per to-do;
+an "Alle to-do's" list on the home page; project to-do lists on the Lijsten page (drag between lists and projects);
+duplicating a date; the end-date picker opens at the start date; contacts are picked from a list.

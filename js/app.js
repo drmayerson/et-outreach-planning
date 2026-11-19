@@ -5,10 +5,10 @@ import { createAuth } from './auth.js';
 import { renderView, route, ui as viewUi } from './views.js';
 import {
   toast, openTodoDialog, openProjectDialog, openListDialog, openEventDialog, openContactDialog,
-  openLinkContactDialog, openTemplateDialog,
+  openLinkContactDialog, openTemplateDialog, openLinkDialog, quickAddOptions, URGENCY,
 } from './ui.js';
 import { exportProjects } from './export.js';
-import { uid, esc, todayISO, mondayOf, addDays } from './util.js';
+import { uid, esc, todayISO, mondayOf, addDays, fmtDate } from './util.js';
 
 const app = document.getElementById('app');
 const dialog = document.getElementById('dialog');
@@ -66,24 +66,27 @@ function renderBanner() {
 // ---------- drag and drop ----------
 function mountSortables() {
   if (!window.Sortable) return;
-  app.querySelectorAll('.sortable').forEach((el) => {
-    window.Sortable.create(el, {
+  app.querySelectorAll('.sortable, .sortable-tiles').forEach((el) => {
+    const kind = el.dataset.drop;
+    const opts = {
       group: el.dataset.group,
       animation: 150,
       delay: 180,
       delayOnTouchOnly: true,
-      handle: el.dataset.drop === 'cats' ? '.grip' : undefined,
-      filter: el.dataset.drop === 'cats' ? undefined : 'button, input, a',
-      preventOnFilter: false,
       ghostClass: 'drag-ghost',
       onEnd: onSortEnd,
-    });
+    };
+    if (kind === 'cats') opts.handle = '.grip';
+    else if (kind === 'projects') opts.draggable = '[data-id]';
+    else { opts.filter = 'button, input, a, label'; opts.preventOnFilter = false; }
+    window.Sortable.create(el, opts);
   });
 }
 
 function onSortEnd(evt) {
   const todoPatches = [];
   const catPatches = [];
+  const projectPatches = [];
   for (const c of new Set([evt.from, evt.to])) {
     const kind = c.dataset.drop;
     [...c.children].filter((el) => el.dataset.id).forEach((el, i) => {
@@ -93,15 +96,29 @@ function onSortEnd(evt) {
         if (cat && cat.order !== order) catPatches.push({ ...cat, order });
         return;
       }
+      if (kind === 'projects') {
+        const p = S.byId('projects', el.dataset.id);
+        if (p && p.order !== order) projectPatches.push({ ...p, order });
+        return;
+      }
       const t = S.byId('todos', el.dataset.id);
       if (!t) return;
       const next = { ...t, order };
       if (kind === 'cat') next.category = c.dataset.category;
       if (kind === 'list') { next.listId = c.dataset.list; next.projectId = ''; next.category = ''; next.assignees = []; }
-      if (next.order !== t.order || next.category !== t.category || next.listId !== t.listId) todoPatches.push(next);
+      if (kind === 'plist' && next.projectId !== c.dataset.project) {
+        next.projectId = c.dataset.project;
+        next.listId = '';
+        next.category = '';
+        if (t.listId || !t.assignees.length) next.assignees = S.defaultAssignees(next.projectId);
+      }
+      if (next.order !== t.order || next.category !== t.category || next.listId !== t.listId || next.projectId !== t.projectId) {
+        todoPatches.push(next);
+      }
     });
   }
   if (catPatches.length) S.upsertMany('categories', catPatches);
+  if (projectPatches.length) S.upsertMany('projects', projectPatches);
   if (todoPatches.length) S.upsertMany('todos', todoPatches);
 }
 
@@ -149,7 +166,36 @@ function snooze(t) {
 
 const goProject = (id) => { location.hash = `#/project/${encodeURIComponent(id)}`; };
 
+const URG_CYCLE = ['', 'dringend', 'semi', 'lang'];
+const URG_SHORT = { '': '!', dringend: 'Dringend', semi: 'Semi', lang: 'Lang' };
+
+function handleQuickAddClick(e) {
+  const dateBox = e.target.closest('.qa-date');
+  if (dateBox) {
+    const input = dateBox.querySelector('input');
+    if (e.target !== input) e.preventDefault();
+    try { input.showPicker(); } catch { input.focus(); }
+    return true;
+  }
+  const b = e.target.closest('[data-qa]');
+  if (!b) return false;
+  if (b.dataset.qa === 'urgency') {
+    const next = URG_CYCLE[(URG_CYCLE.indexOf(b.dataset.value || '') + 1) % URG_CYCLE.length];
+    b.dataset.value = next;
+    b.textContent = URG_SHORT[next];
+    b.className = `qa-btn${next ? ` set u-${next}` : ''}`;
+    b.setAttribute('aria-label', `Urgentie: ${next ? URGENCY[next] : 'geen'}`);
+  } else if (b.dataset.qa === 'waiting') {
+    const on = b.getAttribute('aria-pressed') !== 'true';
+    b.setAttribute('aria-pressed', String(on));
+    b.classList.toggle('set', on);
+  }
+  b.closest('.quickadd').querySelector('input.add').focus();
+  return true;
+}
+
 app.addEventListener('click', (e) => {
+  if (handleQuickAddClick(e)) return;
   const el = e.target.closest('[data-action]');
   if (!el || !app.contains(el)) return;
   const card = el.closest('.todo');
@@ -187,6 +233,11 @@ app.addEventListener('click', (e) => {
       return S.upsert('projects', { ...p, materials });
     }
     case 'link-contact': return openLinkContactDialog(S.byId('projects', id));
+    case 'add-link': return openLinkDialog(S.byId('projects', id));
+    case 'edit-link': {
+      const p = S.byId('projects', route().arg);
+      return p && openLinkDialog(p, Number(el.dataset.index));
+    }
     case 'unlink-contact': {
       const p = S.byId('projects', el.dataset.project);
       if (p) S.upsert('projects', { ...p, contactIds: p.contactIds.filter((x) => x !== id) });
@@ -244,16 +295,21 @@ app.addEventListener('keydown', (e) => {
   const title = inp.value.trim();
   if (!title) return;
   inp.value = '';
+  const opts = quickAddOptions(inp);
   switch (inp.dataset.add) {
-    case 'project':
-      S.upsert('todos', S.newTodo({ title, projectId: inp.dataset.project, category: inp.dataset.category }));
+    case 'project': {
+      const t = S.newTodo({ title, projectId: inp.dataset.project, category: inp.dataset.category, ...opts });
+      S.upsert('todos', t);
+      if (S.weekStatus(t).in) toast('Toegevoegd, en staat in je week');
+      else if (opts.dueDate && S.weekStatus(t, t.assignees[0]).in) toast(`Toegevoegd, en staat in de week van ${S.userName(t.assignees[0])}`);
       break;
+    }
     case 'list':
-      S.upsert('todos', S.newTodo({ title, listId: inp.dataset.list }));
+      S.upsert('todos', S.newTodo({ title, listId: inp.dataset.list, ...opts }));
       break;
     case 'week': {
       const l = S.ensureMyList();
-      S.upsert('todos', S.newTodo({ title, listId: l.id, inWeek: mondayOf(todayISO()) }));
+      S.upsert('todos', S.newTodo({ title, listId: l.id, inWeek: mondayOf(todayISO()), ...opts }));
       toast(`Toegevoegd aan je week (lijst "${l.name}")`);
       break;
     }
@@ -274,6 +330,11 @@ document.addEventListener('change', (e) => {
   if (e.target.matches('[data-demo-me]')) {
     S.DemoBackend.setMe(e.target.value);
     location.reload();
+  }
+  if (e.target.matches('[data-qa="date"]')) {
+    const box = e.target.closest('.qa-date');
+    box.querySelector('.qa-date-text').textContent = e.target.value ? fmtDate(e.target.value) : '';
+    box.classList.toggle('set', !!e.target.value);
   }
   if (e.target.matches('[data-export-archived]')) viewUi.exportArchived = e.target.checked;
   const matId = e.target.dataset?.matQty;

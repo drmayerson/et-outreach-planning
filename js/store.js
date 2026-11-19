@@ -13,7 +13,7 @@ export const SCHEMA = {
   },
   projects: {
     id: 's', title: 's', description: 's', parentId: 's', trekkers: 'a', dropboxUrl: 's', links: 'a',
-    events: 'a', materials: 'a', contactIds: 'a',
+    events: 'a', materials: 'a', contactIds: 'a', color: 's', order: 'n',
     archived: 'b', createdAt: 's', createdBy: 's', updatedAt: 's',
   },
   todos: {
@@ -129,7 +129,7 @@ export function remove(entity, ids) {
 }
 
 // ---------- back-ends ----------
-const DEMO_KEY = 'planningstool-demo-v2';
+const DEMO_KEY = 'planningstool-demo-v3';
 const DEMO_ME = 'planningstool-demo-me';
 
 export class DemoBackend {
@@ -214,7 +214,7 @@ export const myLists = (email = state.me) => sortByOrder(state.lists.filter((l) 
 
 // ---------- projects & sub-projects ----------
 export const parentOf = (p) => byId('projects', p?.parentId);
-export const subProjects = (id) => state.projects.filter((p) => p.parentId === id).sort(byTitle);
+export const subProjects = (id) => state.projects.filter((p) => p.parentId === id).sort((a, b) => byOrder(a, b));
 export const hasSubProjects = (id) => state.projects.some((p) => p.parentId === id);
 
 /** A project is active when neither it nor its parent is archived. */
@@ -223,8 +223,16 @@ export function isProjectActive(p) {
   const parent = parentOf(p);
   return !parent || !parent.archived;
 }
-/** Top-level projects for the home page. */
-export const activeProjects = () => state.projects.filter((p) => !p.parentId && !p.archived).sort(byTitle);
+/** Projects you lead (yourself or through one of its sub-projects). */
+export function isMyProject(p, email = state.me) {
+  return p.trekkers.includes(email) || state.projects.some((s) => s.parentId === p.id && s.trekkers.includes(email));
+}
+/** Hand-set order first (drag on the home page), then title. */
+export const byOrder = (a, b) => (a.order || 1e15) - (b.order || 1e15) || byTitle(a, b);
+/** Top-level projects for the home page, in their set order. */
+export const activeProjects = () => state.projects.filter((p) => !p.parentId && !p.archived).sort(byOrder);
+/** Project colour; a sub-project without its own colour uses its parent's. */
+export const projectColor = (p) => (p ? p.color || parentOf(p)?.color || '' : '');
 /** All active projects, each followed by its sub-projects (for pickers). */
 export function activeProjectTree() {
   const out = [];
@@ -262,11 +270,24 @@ export const contactsOf = (p) =>
 export const projectsOfContact = (id) => state.projects.filter((p) => p.contactIds.includes(id)).sort(byTitle);
 
 // ---------- to-dos ----------
+/**
+ * Who a new to-do in this project is assigned to: the project's trekker(s);
+ * for the general to-dos of a project with sub-projects: only yourself.
+ */
+export function defaultAssignees(projectId) {
+  const p = byId('projects', projectId);
+  if (!p) return [];
+  if (hasSubProjects(p.id)) return [state.me];
+  return [...p.trekkers];
+}
+
 export function newTodo(fields = {}) {
-  return {
+  const t = {
     id: uid(), title: '', status: 'open', urgency: '', assignees: [], subtasks: [], links: [],
     createdAt: new Date().toISOString(), createdBy: state.me, order: Date.now(), ...fields,
   };
+  if (t.projectId && !fields.assignees) t.assignees = defaultAssignees(t.projectId);
+  return t;
 }
 
 /** Make sure the current user has at least one personal list (for quick-adding to "this week"). */

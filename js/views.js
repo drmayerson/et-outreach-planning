@@ -1,7 +1,10 @@
 // The pages. Each view returns an HTML string; app.js wires up clicks and drag-and-drop.
 import * as S from './store.js';
 import { esc, todayISO, addDays, mondayOf, fmtDate, weekNumber, safeUrl } from './util.js';
-import { icon, todoCard, cards, empty, avatars, linkChips, eventDateText, MATERIAL_STATUS } from './ui.js';
+import {
+  icon, cards, empty, avatars, eventDateText, colorVar, quickAdd, projectLinks,
+} from './ui.js';
+import { linkLabel } from './util.js';
 
 export const ui = { showDone: {}, showDoneLists: false, contactQuery: '', exportArchived: false };
 
@@ -48,6 +51,9 @@ function homeView() {
   const unassigned = S.sortTodos(open.filter(S.isUnassigned));
   const events = S.eventsBetween(today, until);
   const projects = S.activeProjects();
+  const mine = projects.filter((p) => S.isMyProject(p, me));
+  const others = projects.filter((p) => !S.isMyProject(p, me));
+  const all = S.sortTodos(open.filter((t) => t.projectId || S.isMine(t, me)));
 
   const side = `
     ${overdue.length ? `<section class="panel alert"><h2>Te laat <span class="count">${overdue.length}</span></h2>
@@ -56,14 +62,18 @@ function homeView() {
       ${events.length ? `<div class="events">${events.map((ev) => eventRow(ev, true)).join('')}</div>` : ''}
       ${soon.length ? `<div class="todo-list">${cards(soon, { context: true })}</div>` : events.length ? '' : empty('Geen deadlines of activiteiten in de komende 14 dagen.')}</section>
     <section class="panel"><h2>Niet toegewezen <span class="count">${unassigned.length}</span></h2>
-      ${unassigned.length ? `<div class="todo-list">${cards(unassigned, { context: true, claim: true })}</div>` : empty('Alles is toegewezen.')}</section>`;
+      ${unassigned.length ? `<div class="todo-list">${cards(unassigned, { context: true, claim: true })}</div>` : empty('Alles is toegewezen.')}</section>
+    <section class="panel"><h2>Alle to-do's <span class="count">${all.length}</span></h2>
+      <p class="hint">Alle open to-dos van de projecten en je eigen lijsten. Met ${icon('calPlus')} zet je er een in je week.</p>
+      ${all.length ? `<div class="todo-list scroll-list">${cards(all, { context: true })}</div>` : empty('Geen open to-dos.')}</section>`;
 
   return `<div class="home">
     <aside class="home-side">${side}</aside>
     <section class="home-main">
-      <div class="page-head"><h1>Projecten</h1></div>
-      <div class="tiles">${projects.map(projectTile).join('')}
-        <button class="tile new" data-action="new-project">${icon('plus')}<span>Nieuw project</span></button></div>
+      <div class="page-head"><h1>Mijn projecten</h1><p class="hint">Sleep de tegels om de volgorde te wijzigen.</p></div>
+      <div class="tiles sortable-tiles" data-group="projects-mine" data-drop="projects">${mine.map(projectTile).join('')}<button class="tile new" data-action="new-project">${icon('plus')}<span>Nieuw project</span></button></div>
+      ${others.length ? `<div class="page-head others-head"><h2>Andere projecten</h2></div>
+        <div class="tiles sortable-tiles" data-group="projects-others" data-drop="projects">${others.map(projectTile).join('')}</div>` : ''}
     </section></div>`;
 }
 
@@ -75,7 +85,7 @@ function projectTile(p) {
   const late = ts.filter((t) => t.dueDate && t.dueDate < today).length;
   const next = ts.filter((t) => t.dueDate && t.dueDate >= today).sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
   const nextEvent = S.eventsBetween(today, '9999-12-31').find((ev) => family.includes(ev.project.id));
-  return `<a class="tile" href="${projectHref(p.id)}">
+  return `<a class="tile${S.projectColor(p) ? ' colored' : ''}" href="${projectHref(p.id)}" data-id="${esc(p.id)}"${colorVar(p)}>
     <h3>${esc(p.title)}</h3>
     ${p.description ? `<p class="desc">${esc(p.description)}</p>` : ''}
     <div class="tile-foot">${avatars(p.trekkers)}
@@ -89,24 +99,22 @@ function projectTile(p) {
 function subProjectCard(s) {
   const open = S.state.todos.filter((t) => t.projectId === s.id && S.isOpen(t));
   const late = open.filter((t) => t.dueDate && t.dueDate < todayISO()).length;
-  return `<a class="subcard" href="${projectHref(s.id)}">
+  return `<a class="subcard${S.projectColor(s) ? ' colored' : ''}" href="${projectHref(s.id)}"${colorVar(s)}>
     <span class="subcard-title">${esc(s.title)}</span>
     <span class="subcard-meta">${avatars(s.trekkers)}<span>${open.length} to-do${open.length === 1 ? '' : "'s"}</span>${late ? `<b class="late">${late} te laat</b>` : ''}</span>
   </a>`;
 }
 
-function materialsPanel(p) {
-  const rows = p.materials
-    .map((m) => `<div class="mat-row" data-mid="${esc(m.id)}">
-      <button class="mat-status s-${esc(m.status)}" data-action="mat-cycle" title="Klik om de status te wijzigen">${esc(MATERIAL_STATUS[m.status] || 'Nodig')}</button>
-      <span class="mat-name">${esc(m.name)}</span>
-      <input class="mat-qty" data-mat-qty="${esc(m.id)}" value="${esc(m.qty)}" placeholder="aantal" aria-label="Aantal ${esc(m.name)}" autocomplete="off">
-      <button class="iconbtn" data-action="mat-delete" title="Verwijderen">${icon('x')}</button>
-    </div>`)
-    .join('');
-  return `<section class="panel info"><h2>${icon('box')}Materiaal <span class="count">${p.materials.filter((m) => m.status !== 'klaar').length}</span></h2>
-    ${rows ? `<div class="mat-list">${rows}</div>` : ''}
-    ${p.archived ? '' : `<input class="add" placeholder="+ Materiaal toevoegen" autocomplete="off" data-add="material" data-project="${esc(p.id)}" data-focus-key="add-mat-${esc(p.id)}">`}
+function linksPanel(p) {
+  const links = projectLinks(p);
+  return `<section class="panel info"><h2>${icon('link')}Links <span class="count">${links.length}</span></h2>
+    ${links.length ? `<div class="link-list">${links.map((l, i) => {
+      const href = safeUrl(l.url);
+      return `<div class="link-row">${icon(/dropbox/i.test(l.url) ? 'folder' : 'link')}
+        ${href ? `<a href="${esc(href)}" target="_blank" rel="noopener">${esc(linkLabel(l))}</a>` : `<span>${esc(linkLabel(l))}</span>`}
+        <button class="iconbtn" data-action="edit-link" data-index="${i}" title="Link bewerken">${icon('edit')}</button></div>`;
+    }).join('')}</div>` : empty('Nog geen links, bv. de Dropbox-map of de website van het evenement.')}
+    ${p.archived ? '' : `<button class="linkbtn" data-action="add-link" data-id="${esc(p.id)}">+ Link toevoegen</button>`}
   </section>`;
 }
 
@@ -134,7 +142,6 @@ function projectView(id) {
   const cats = S.sortByOrder(S.state.categories);
   const known = new Set(cats.map((c) => c.id));
   const groups = [...cats, { id: '', name: 'Zonder categorie' }];
-  const dropbox = safeUrl(p.dropboxUrl);
   const archivedNote = p.archived ? ' <span class="tag">Gearchiveerd</span>' : parent?.archived ? ' <span class="tag">Hoofdproject gearchiveerd</span>' : '';
 
   const groupHtml = groups
@@ -144,7 +151,7 @@ function projectView(id) {
       return `<section class="group">
         <h3>${esc(g.name)} <span class="count">${items.length}</span></h3>
         ${dropZone(`data-group="todos" data-drop="cat" data-category="${esc(g.id)}"`, cards(items))}
-        ${p.archived ? '' : `<input class="add" placeholder="+ To-do toevoegen" autocomplete="off" data-add="project" data-project="${esc(id)}" data-category="${esc(g.id)}" data-focus-key="add-${esc(id)}-${esc(g.id)}">`}
+        ${p.archived ? '' : quickAdd(`data-add="project" data-project="${esc(id)}" data-category="${esc(g.id)}"`, '+ To-do toevoegen', `add-${id}-${g.id}`)}
       </section>`;
     })
     .join('');
@@ -159,7 +166,7 @@ function projectView(id) {
           ${ev.location ? `<span class="event-loc">${icon('pin')}${esc(ev.location)}</span>` : ''}</button>`).join('')}</div>` : empty('Nog geen data.')}
       ${p.archived ? '' : `<button class="linkbtn" data-action="add-event" data-id="${esc(id)}">+ Datum toevoegen</button>`}
     </section>
-    ${materialsPanel(p)}
+    ${linksPanel(p)}
     <section class="panel info"><h2>${icon('users')}Contactpersonen <span class="count">${contacts.length}</span></h2>
       ${contacts.length ? `<div class="contact-list">${contacts.map((c) => contactChip(c, id)).join('')}</div>` : empty('Nog geen contactpersonen.')}
       <button class="linkbtn" data-action="link-contact" data-id="${esc(id)}">+ Contact koppelen</button>
@@ -167,14 +174,12 @@ function projectView(id) {
   </div>`;
 
   return `<div class="crumbs"><a href="#/">← Overzicht</a>${parent ? ` / <a href="${projectHref(parent.id)}">${esc(parent.title)}</a>` : ''}</div>
-    <header class="page-head project-head">
+    <header class="page-head project-head${S.projectColor(p) ? ' colored' : ''}"${colorVar(p)}>
       <div class="head-text">
         <h1>${esc(p.title)}${archivedNote}</h1>
         ${p.description ? `<p class="lead">${esc(p.description)}</p>` : ''}
         <div class="meta-row">
           <span class="muted">Trekker: ${p.trekkers.length ? p.trekkers.map((e) => esc(S.userName(e))).join(', ') : 'nog niemand'}</span>
-          ${dropbox ? `<a class="chip strong" href="${esc(dropbox)}" target="_blank" rel="noopener">${icon('folder')}Dropbox-map</a>` : ''}
-          ${linkChips(p.links)}
         </div>
       </div>
       <div class="head-actions">
@@ -209,7 +214,7 @@ function weekView() {
       <h2>${mine ? 'Mijn week' : `Week van ${esc(u.name || u.email)}`} <span class="count">${items.length}</span></h2>
       ${events.length ? `<div class="events week-events">${events.map((ev) => eventRow(ev, true)).join('')}</div>` : ''}
       ${items.length ? `<div class="todo-list">${cards(items, mine ? { context: true, week: true } : { context: true, noActions: true })}</div>` : empty(mine ? 'Geen to-dos gepland deze week.' : 'Geen to-dos gepland.')}
-      ${mine ? '<input class="add" placeholder="+ Iets toevoegen aan deze week" autocomplete="off" data-add="week" data-focus-key="add-week">' : ''}
+      ${mine ? quickAdd('data-add="week"', '+ Iets toevoegen aan deze week', 'add-week') : ''}
     </section>`;
   };
   return `<header class="page-head"><div class="head-text"><h1>Deze week</h1>
@@ -237,7 +242,7 @@ function listsView(arg) {
         ${mine
           ? dropZone(`data-group="todos" data-drop="list" data-list="${esc(l.id)}"`, cards(items))
           : items.length ? `<div class="todo-list">${cards(items)}</div>` : empty('Leeg.')}
-        ${mine ? `<input class="add" placeholder="+ To-do toevoegen" autocomplete="off" data-add="list" data-list="${esc(l.id)}" data-focus-key="add-l-${esc(l.id)}">` : ''}
+        ${mine ? quickAdd(`data-add="list" data-list="${esc(l.id)}"`, '+ To-do toevoegen', `add-l-${l.id}`) : ''}
       </section>`;
     })
     .join('');
@@ -248,7 +253,29 @@ function listsView(arg) {
       <div class="head-actions"><button class="linkbtn" data-action="toggle-show-done-lists">${ui.showDoneLists ? 'Verberg' : 'Toon'} afgewerkte</button></div></header>
     <nav class="tabs">${tabs}</nav>
     <div class="board">${cols}${mine ? `<button class="column new" data-action="new-list">${icon('plus')}Nieuwe lijst</button>` : ''}
-      ${!lists.length && !mine ? empty('Nog geen lijsten.') : ''}</div>`;
+      ${!lists.length && !mine ? empty('Nog geen lijsten.') : ''}</div>
+    ${mine ? projectListsBoard() : ''}`;
+}
+
+/** The to-do list of every active project (yours first), so to-dos can be dragged between lists and projects. */
+function projectListsBoard() {
+  const me = S.state.me;
+  const tops = S.activeProjects();
+  const ordered = [...tops.filter((p) => S.isMyProject(p, me)), ...tops.filter((p) => !S.isMyProject(p, me))];
+  const tree = ordered.flatMap((p) => [p, ...S.subProjects(p.id).filter((x) => !x.archived)]);
+  const cols = tree
+    .map((p) => {
+      const items = S.sortByOrder(S.state.todos.filter((t) => t.projectId === p.id && !t.archived && (ui.showDoneLists || t.status !== 'done')));
+      return `<section class="column project-col${S.projectColor(p) ? ' colored' : ''}"${colorVar(p)}>
+        <header class="col-head"><h3><a href="${projectHref(p.id)}" title="Naar het project">${esc(S.projectLabel(p))}</a></h3>
+          <span class="count">${items.filter((t) => t.status !== 'done').length}</span></header>
+        ${dropZone(`data-group="todos" data-drop="plist" data-project="${esc(p.id)}"`, cards(items))}
+        ${quickAdd(`data-add="project" data-project="${esc(p.id)}" data-category=""`, '+ To-do toevoegen', `add-pl-${p.id}`)}
+      </section>`;
+    })
+    .join('');
+  return `<h2 class="section-title">Projecten <span class="sub">sleep to-dos tussen je lijsten en projecten; klik op een titel om het project te openen</span></h2>
+    <div class="board">${cols || empty('Nog geen projecten.')}</div>`;
 }
 
 // ---------- contacts ----------

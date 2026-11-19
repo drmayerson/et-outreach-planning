@@ -431,3 +431,65 @@ input.search:focus { outline: none; border-color: var(--accent); box-shadow: 0 0
   .contact-row { grid-template-columns: 1fr; }
   .info-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- version 1.2: colours, quick-add, links, contact picker ---------- */
+.tile.colored { border-left: 5px solid var(--pc); padding-left: 13px; }
+.subcard.colored { border-left: 4px solid var(--pc); }
+.project-head.colored { border-left: 5px solid var(--pc); padding-left: 14px; }
+.column.project-col.colored { border-top: 4px solid var(--pc); }
+.badge.ctx[style] { background: color-mix(in srgb, var(--pc) 20%, transparent); color: var(--text); }
+.col-head h3 a { color: var(--text); }
+.col-head h3 a:hover { color: var(--accent); }
+.others-head { margin-top: 24px; }
+.others-head h2 { font-size: 1.15rem; color: var(--muted); }
+.home-main .page-head { align-items: baseline; }
+.sortable-tiles .tile[data-id] { cursor: grab; }
+.scroll-list { max-height: 460px; overflow-y: auto; padding-right: 4px; }
+.hint .ic { width: 14px; height: 14px; vertical-align: -2px; }
+
+.quickadd { position: relative; margin-top: 6px; }
+.quickadd input.add { margin-top: 0; padding-right: 108px; }
+.qa-opts { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: flex; gap: 2px; }
+.qa-btn {
+  position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 3px;
+  min-width: 26px; height: 24px; padding: 0 5px; border: 0; border-radius: 6px;
+  background: transparent; color: var(--muted); font: inherit; font-size: 0.78rem; font-weight: 700; cursor: pointer;
+}
+.qa-btn:hover { background: var(--surface-2); color: var(--text); }
+.qa-btn .ic { width: 15px; height: 15px; }
+.qa-btn.set { background: var(--accent-soft); color: var(--accent); }
+.qa-btn.u-dringend { background: var(--late-soft); color: var(--late); }
+.qa-btn.u-semi { background: var(--warn-soft); color: var(--warn); }
+.qa-btn.u-lang { background: var(--low-soft); color: var(--low); }
+.qa-btn[data-qa="waiting"].set { background: var(--wait-soft); color: var(--wait); }
+.qa-date input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; border: 0; padding: 0; pointer-events: none; }
+.qa-date-text:empty { display: none; }
+.quickadd:has(.qa-date.set) input.add, .quickadd:has(.qa-btn.u-dringend) input.add { padding-right: 170px; }
+
+.swatches { display: flex; flex-wrap: wrap; gap: 8px; }
+.swatch { position: relative; cursor: pointer; }
+.swatch input { position: absolute; opacity: 0; }
+.swatch span { display: block; width: 26px; height: 26px; border-radius: 50%; background: var(--sw); border: 2px solid transparent; }
+.swatch.none span { background: var(--surface); border: 2px dashed var(--border); }
+.swatch input:checked + span { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text); }
+.swatch input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.link-list { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.link-row { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; }
+.link-row > .ic { width: 16px; height: 16px; color: var(--muted); }
+.link-row a, .link-row span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.link-row .iconbtn { width: 28px; height: 28px; }
+
+.pick-list { display: flex; flex-direction: column; gap: 2px; margin-top: 8px; max-height: 50vh; overflow-y: auto; }
+.pick-row {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 8px; border: 1px solid transparent; background: transparent;
+  font: inherit; color: var(--text); cursor: pointer;
+}
+.pick-row:hover:not(:disabled) { background: var(--surface-2); border-color: var(--border); }
+.pick-row:disabled { cursor: default; opacity: 0.6; }
+.pick-row .muted { font-size: 0.85rem; }
+.pick-name { font-weight: 600; }
+.pick-row.new { color: var(--accent); border: 1px dashed var(--border); align-items: center; margin-bottom: 4px; }
+.pick-row.new .ic { width: 16px; height: 16px; }
+.dlg-body .search { max-width: none; margin: 4px 0 0; }
